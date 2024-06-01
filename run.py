@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 import os
 import google.generativeai as genai
 import re
+import asyncio
 
 # .env 파일로부터 환경변수를 로드합니다.
 load_dotenv()
@@ -23,8 +24,11 @@ intents.message_content = True
 intents.guilds = True
 intents.guild_messages = True  # 서버 내 메시지 수신을 위해 추가
 
-# 명령어 접두사가 '!'인 Bot 객체를 생성합니다. intents도 함께 전달합니다.
-bot = commands.Bot(command_prefix='!', intents=intents)
+# Client 객체를 생성할 때 heartbeat_timeout을 설정합니다.
+client = discord.Client(intents=intents, heartbeat_timeout=60)  # 기본값은 10초이며, 여기서는 60초로 설정
+
+# 명령어 접두사가 '!'인 Bot 객체를 생성합니다. client를 전달합니다.
+bot = commands.Bot(command_prefix='!', intents=intents, heartbeat_timeout=60)
 
 @bot.event
 async def on_ready():
@@ -77,6 +81,13 @@ def parse_model_settings(content):
     prompt = content[end_idx:].strip()
     return settings, invalid_settings, prompt
 
+async def generate_content_async(prompt, settings):
+    """
+    비동기적으로 콘텐츠를 생성하는 함수입니다.
+    """
+    model = genai.GenerativeModel('gemini-1.5-pro-latest', generation_config=settings)
+    return await asyncio.to_thread(model.generate_content, prompt)
+
 @bot.command()
 async def gemini(ctx, *, arg):
     """
@@ -93,8 +104,7 @@ async def gemini(ctx, *, arg):
     loading_message = await ctx.send(loading_text)
 
     try:
-        model = genai.GenerativeModel('gemini-pro', generation_config=settings)
-        response = model.generate_content(prompt)
+        response = await generate_content_async(prompt, settings)
         await loading_message.edit(content=f'{response.text}')
     except Exception as e:
         error_message = 'An error occurred while processing your request.'
